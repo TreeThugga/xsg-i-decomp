@@ -382,7 +382,44 @@ extern int unitTblGet(int side, BattleUnit ***table);
 extern int calcBoostChk(BattleUnit *unit, int mode);
 extern int calcBoost(BattleUnit *unit, int mode);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/battle_init", battleCtrlBoostPl);
+/* "** BOOST PL=%d (%d)\n" (data still asm-owned; original ELF symbol name). */
+extern const char D_00A43D78[];
+
+extern int dataPadRead(int padNo);
+extern void menuBoostDisp(int enabled);
+
+int battleCtrlBoostPl(void)
+{
+    BattleUnit **table;
+    int selection;
+    int held;
+
+    held = dataPadRead(1);
+    if (dataPadRead(0) & 0xA) {
+        menuBoostDisp(1);
+        selection = -1;
+        if (held & 0x80) {
+            selection = 0;
+        } else if (held & 0x10) {
+            selection = 1;
+        } else if (held & 0x20) {
+            selection = 2;
+        }
+
+        unitTblGet(0, &table);
+        if (selection != -1 && table[selection] != 0 &&
+            calcBoostChk(table[selection], 1) != 0) {
+            printf(D_00A43D78, calcUPGet((ObjectTask *)table[selection])->charaId,
+                   ((signed char *)calcUPGet((ObjectTask *)table[selection]))[CALC_PARAM_BOOST_LEVEL_OFF]);
+            calcBoost(table[selection], 1);
+            return 1;
+        }
+        return 0;
+    }
+
+    menuBoostDisp(0);
+    return 0;
+}
 
 extern int rnd(int max);
 
@@ -1161,7 +1198,88 @@ INCLUDE_ASM("asm/nonmatchings/ov01/battle_init", specSyoukanProc);
 
 INCLUDE_ASM("asm/nonmatchings/ov01/battle_init", specHensinProc);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/battle_init", specAnalyzeProc);
+/*
+ * CalcUnitParam (include/ov01/calc.h, calc.c's own TU): specAnalyzeProc
+ * reads two more halfwords that TU hasn't named yet.
+ */
+#define CALC_PARAM_MAX_HP_OFF 0x0
+#define CALC_PARAM_CONDITIONS_OFF 0x18
+
+/*
+ * eBattleWinOpen3's analysis-window record when BW3BattleOrDataBase selects
+ * the battle variant (src/main/endou_test.c's own EndouBattleAnalysisParams,
+ * still asm there; src/ov02/umn_guno_data_base_get.c restates the other
+ * variant as UmnDataBaseWinParam for the database view).
+ */
+typedef struct AnalysisWinParams {
+    int x;                      /* +0x00 */
+    int y;                      /* +0x04 */
+    int style;                  /* +0x08 */
+    const char *name;           /* +0x0C */
+    short hp;                   /* +0x10 */
+    short maxHp;                /* +0x12 */
+    unsigned short conditions;  /* +0x14 */
+    unsigned char unmodeled_16[2];
+    int techPoints;             /* +0x18 */
+    int etherPoints;            /* +0x1C */
+    int skillPoints;            /* +0x20 */
+    int experience;             /* +0x24 */
+    long money;                 /* +0x28 */
+    unsigned short commonDrop;  /* +0x30 */
+    unsigned short rareDrop;    /* +0x32 */
+} AnalysisWinParams;
+
+extern void eBattleWinOpen3(AnalysisWinParams *param);
+extern void UmnDataBaseAnalisisSet(int monsterId);
+extern const char **dataEnemyNameGet(int index);
+
+/*
+ * dataGainGet's own record (src/ov01/data_unit_org_get.c, GainRecord, still
+ * opaque there); specAnalyzeProc's own fields, restated locally the same
+ * way battle_init.c already restates unit_cmd.h's CmdEntry as
+ * SyoukanCmdEntry.
+ */
+typedef struct GainWinStat {
+    int experience;             /* +0x00 */
+    unsigned short rewardMoney; /* +0x04 */
+    unsigned char techPoints;   /* +0x06 */
+    unsigned char etherPoints;  /* +0x07 */
+    unsigned char skillPoints;  /* +0x08 */
+    unsigned char unmodeled_09[4];
+    unsigned char commonDropHi; /* +0x0D */
+    unsigned char rareDropHi;   /* +0x0E */
+    unsigned char unmodeled_0f[1];
+    unsigned char commonDropLo; /* +0x10 */
+    unsigned char rareDropLo;   /* +0x11 */
+    unsigned char unmodeled_12[2];
+} GainWinStat;
+
+extern GainWinStat *dataGainGet(int entry);
+
+void specAnalyzeProc(ObjectTask *unit)
+{
+    AnalysisWinParams params;
+    GainWinStat *gain;
+
+    gain = dataGainGet(calcUPGet(unit)->charaId);
+    UmnDataBaseAnalisisSet(calcUPGet(unit)->charaId);
+
+    params.x = 0x10;
+    params.y = 0x6C;
+    params.style = 0x00FFFFFD;
+    params.name = *dataEnemyNameGet(calcUPGet(unit)->charaId);
+    params.hp = calcUPGet(unit)->currentHp;
+    params.maxHp = *(unsigned short *)((char *)calcUPGet(unit) + CALC_PARAM_MAX_HP_OFF);
+    params.conditions = *(unsigned short *)((char *)calcUPGet(unit) + CALC_PARAM_CONDITIONS_OFF);
+    params.techPoints = gain->techPoints;
+    params.etherPoints = gain->etherPoints;
+    params.skillPoints = gain->skillPoints;
+    params.money = gain->rewardMoney;
+    params.experience = gain->experience;
+    params.commonDrop = gain->commonDropLo + (gain->commonDropHi << 8);
+    params.rareDrop = gain->rareDropLo + (gain->rareDropHi << 8);
+    eBattleWinOpen3(&params);
+}
 
 void specEscapeProc(void)
 {
@@ -1848,4 +1966,31 @@ void curTexTrans(void)
     grPacketSend(packet);
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/battle_init", curEnvMake);
+/*
+ * GS_REG_SET's real (void *, long long, long long) prototype, as
+ * src/ov01/entry_first_init.c's encEnvMake and src/ov01/menu.c's
+ * menuStatEnvMake already declare it for the same idiom.
+ */
+extern void GS_REG_SET(void *packet, long long register_id, long long control);
+extern unsigned short dataXtxAdrGet(int index);
+
+void curEnvMake(void *packet, int isAlly)
+{
+    unsigned short tbp0, tbp1;
+
+    if (!isAlly) {
+        tbp0 = dataXtxAdrGet(0xF);
+        tbp1 = dataXtxAdrGet(0x10);
+    } else {
+        tbp0 = dataXtxAdrGet(0xF);
+        tbp1 = dataXtxAdrGet(0x12);
+    }
+
+    GS_REG_SET(packet, 0xE, 0x1000000000008005LL);
+    GS_REG_SET(packet, 0x6,
+               tbp0 | ((long long)tbp1 << 37) | 0x20000005DD340000LL);
+    GS_REG_SET(packet, 0x42, 0);
+    GS_REG_SET(packet, 0x47, 0x5000D);
+    GS_REG_SET(packet, 0x8, 0);
+    GS_REG_SET(packet, 0x14, 0);
+}
