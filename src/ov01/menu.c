@@ -975,13 +975,25 @@ void menuStatTexTrans(void) {
     grPacketSend((int)&packet);
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/menu", menuEnvMake);
-
 /* GS_REG_SET's real (void *, long long, long long) prototype, as
  * src/ov01/entry_first_init.c's encEnvMake already declares it for the same
  * idiom. */
 extern void GS_REG_SET(void *packet, long long register_id, long long control);
 extern unsigned short dataXtxAdrGet(int index);
+
+void menuEnvMake(void *packet)
+{
+    unsigned short tbp0 = dataXtxAdrGet(0xD);
+    unsigned short tbp1 = dataXtxAdrGet(0xE);
+
+    GS_REG_SET(packet, 0xE, 0x1000000000008005LL);
+    GS_REG_SET(packet, 0x6,
+               tbp0 | ((long long)tbp1 << 37) | 0x2000000629340000LL);
+    GS_REG_SET(packet, 0x42, 0);
+    GS_REG_SET(packet, 0x47, 0x3000D);
+    GS_REG_SET(packet, 0x8, 0);
+    GS_REG_SET(packet, 0x14, 0);
+}
 
 void menuStatEnvMake(void *packet)
 {
@@ -997,7 +1009,19 @@ void menuStatEnvMake(void *packet)
     GS_REG_SET(packet, 0x14, 0);
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/menu", menuFaceEnvMake);
+void menuFaceEnvMake(void *packet)
+{
+    unsigned short tbp0 = dataXtxAdrGet(0x8);
+    unsigned short tbp1 = dataXtxAdrGet(0x9);
+
+    GS_REG_SET(packet, 0xE, 0x1000000000008005LL);
+    GS_REG_SET(packet, 0x6,
+               tbp0 | ((long long)tbp1 << 37) | 0x2000000629340000LL);
+    GS_REG_SET(packet, 0x42, 0);
+    GS_REG_SET(packet, 0x47, 0x3000D);
+    GS_REG_SET(packet, 0x8, 0);
+    GS_REG_SET(packet, 0x14, 0);
+}
 
 void menuATBEnvMake(void *packet)
 {
@@ -1013,7 +1037,19 @@ void menuATBEnvMake(void *packet)
     GS_REG_SET(packet, 0x14, 0);
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/menu", menuFontEnvMake);
+void menuFontEnvMake(void *packet)
+{
+    unsigned short tbp0 = dataXtxAdrGet(0xB);
+    unsigned short tbp1 = dataXtxAdrGet(0xC);
+
+    GS_REG_SET(packet, 0xE, 0x1000000000008005LL);
+    GS_REG_SET(packet, 0x6,
+               tbp0 | ((long long)tbp1 << 37) | 0x2000000629340000LL);
+    GS_REG_SET(packet, 0x42, 0x44);
+    GS_REG_SET(packet, 0x47, 0x3000D);
+    GS_REG_SET(packet, 0x8, 0);
+    GS_REG_SET(packet, 0x14, 0);
+}
 
 void menuStatIconEnvMake(void *packet)
 {
