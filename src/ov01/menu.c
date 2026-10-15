@@ -839,7 +839,62 @@ void menuFontPutSub(int packet, int x, int y, int charCode) {
 
 INCLUDE_ASM("asm/nonmatchings/ov01/menu", menuFontPut);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/menu", menuActCurPut);
+/*
+ * The cursor object's transform, the work's +0x90..+0x110 tail that
+ * grCalcMatrix reads through grBBCalc (src/ov01/gr_gp_init.c TransformState:
+ * position at +0x90, offset at +0xa0, added to position). menuActCurPut
+ * saves and restores all 0x80 bytes with aligned ld/sd, so the storage is
+ * eight-byte aligned (the include/ov01/m_ef_create.h spelling); it writes
+ * position through sefGetNullPosition and offset.y (swc1 +0x14) itself.
+ */
+typedef union MenuCursorTransform {
+    struct {
+        Vector4 position; /* +0x00 */
+        Vector4 offset;   /* +0x10 */
+        unsigned char unmodeled_20[0x60];
+    } fields;
+    u64 storage[0x80 / sizeof(u64)];
+} MenuCursorTransform;
+
+typedef struct MenuCursorWork {
+    unsigned char unmodeled_00[0x90];
+    MenuCursorTransform transform; /* +0x90 */
+} MenuCursorWork;
+
+/* A unit task's motion actor beside its ObjectTask prefix
+ * (`lw $5,0x14($6)`; src/ov01/cmd.h CmdUnitRecord names the same word). */
+typedef struct MenuUnitTask {
+    ObjectTask task;   /* +0x00 */
+    void *motionActor; /* +0x14 */
+} MenuUnitTask;
+
+/* src/main/sef.c and src/ov01/gr_gp_init.c (ov01/tu008). */
+extern void sefGetNullPosition(Vector4 *position, void *actor, int part, int flag);
+extern int grBBCalc(ObjectTask *task, int *screenX, int *screenY);
+
+void menuActCurPut(int packet, ObjectTask *cursor, ObjectTask *unit, int frame)
+{
+    MenuCursorTransform saved;
+    int screenX;
+    int screenY;
+    MenuCursorTransform *transform;
+
+    if (unit == 0 || (((BattleActor *)unit->work)->flags & ACTOR_FLAG_ENEMY)) {
+        return;
+    }
+    transform = &((MenuCursorWork *)cursor->work)->transform;
+    saved = *transform;
+    sefGetNullPosition(&transform->fields.position, ((MenuUnitTask *)unit)->motionActor, 0, 0);
+    transform->fields.offset.y = 1.3f;
+    if (grBBCalc(cursor, &screenX, &screenY) != 0) {
+        menuStatEnvMake((void *)packet);
+        grOpenSpr(packet);
+        menuStatSprite(packet, screenX - 8, screenY - 8, 16, 16, (frame % 8) * 16, 0x80);
+        grCloseSpr();
+        grPacketSend(packet);
+    }
+    *transform = saved;
+}
 
 void menuStatSprite(int packet, int x, int y, int width, int height, int srcX, int srcY) {
     GrSprite sprite;
