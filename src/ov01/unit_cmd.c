@@ -708,7 +708,59 @@ int unitCmdMoveChaHover3(ObjectTask *unit)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdMovePos);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdMovePosNorm);
+/*
+ * unitCmdMovePosNorm's own siblings, still asm (unitCmdLenGet) or defined
+ * later in this TU; forward-declared for its calls. unitCmdLenGet returns
+ * its distance in $f0, which unitCmdMovePosNorm hands on as unitCmdDivSet's
+ * distance (mov.s $f12,$f0 at 0x00a044f4).
+ */
+extern float unitCmdLenGet(ObjectTask *unit);
+extern void unitCmdDivSet(UnitRecord *unit, float distance, float step);
+
+/*
+ * Step 0 calls unitCmdDivSet(unit, unitCmdLenGet(unit), 255.0f); its body
+ * below moves cmdTarget.x/z to position + (cmdTarget - position) * (255.0f /
+ * that length). The queued command's argument word is parked in Actor.targetUnit for the jump
+ * (lw $2,0x4($4); sw $2,0x80($17) at 0x00a044b4/0x00a044e0) and written back
+ * before the run's unitCmdDstSet reads it (sw $2,0x4($4) at 0x00a04568).
+ */
+int unitCmdMovePosNorm(ObjectTask *unit)
+{
+    Actor *actor;
+    CmdEntry *cmd;
+
+    actor = unit->work;
+    cmd = unitCmdPtrGet(unit);
+    switch (actor->moveState) {
+    case 0:
+        actor->targetUnit = (ObjectTask *)cmd->argument;
+        unitCmdDivSet((UnitRecord *)unit, unitCmdLenGet(unit), 255.0f);
+        unitCmdVASet(unit, 4, 0);
+        unitCmdJump(unit, 4, 2, 0);
+        actor->moveState++;
+        break;
+    case 1:
+        if (unitCmdJump(unit, 4, 2, 0) != 0) {
+            actor->moveState++;
+        }
+        break;
+    case 2:
+        actor->movePhase = 0;
+        cmd->argument = (int)actor->targetUnit;
+        unitCmdDstSet(unit, 2, 1);
+        unitCmdVASet(unit, 2, 0);
+        unitCmdDirSet((UnitRecord *)unit);
+        unitCmdRun(unit, 2, 1);
+        actor->moveState++;
+        break;
+    case 3:
+        if (unitCmdRun(unit, 2, 1) != 0) {
+            unitCmdMoveNext(unit, 1);
+        }
+        break;
+    }
+    return 0;
+}
 
 int unitCmdMovePosRun(ObjectTask *unit)
 {
@@ -990,7 +1042,23 @@ void unitCmdStat(ObjectTask *unit)
     unitCmdNext(unit);
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdReadWait);
+int unitCmdReadWait(ObjectTask *unit)
+{
+    Actor *actor;
+    CmdEntry *cmd;
+
+    actor = unit->work;
+    cmd = unitCmdPtrGet(unit);
+    if (actor->moveState == 0) {
+        if (dataCdSync() <= cmd->argument) {
+            dataUnitFileLoad2Sub(unit);
+            actor->moveState++;
+        }
+    } else {
+        return unitCmdNext(unit);
+    }
+    return 0;
+}
 
 INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdAgws2);
 
@@ -1053,7 +1121,34 @@ int unitMotGet(ObjectTask *unit)
     return ((UnitRecord *)unit)->motionActor->motion + 1;
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitMotStandSet);
+/*
+ * Bits of Actor.flags (unit->work, lw 0x10 then lw 0x0) that unitMotStandSet
+ * tests: 0x800 (andi at 0x00a072b8) selects motion 0x1D outright; 0x8 (andi
+ * at 0x00a072dc) is tested only after calcIdol2Chk returned nonzero, and when
+ * set makes motion 2 depend on unitMotGet returning 0x1C or 0x23.
+ */
+#define ACTOR_FLAG_STAND_MOTION_1D 0x800u
+#define ACTOR_FLAG_STAND_MOTION_TEST 0x8u
+
+/*
+ * One condition for motion 2, as the original branches: separate if/else
+ * arms for the last test turn its bnel (0x00a07308) into a bne.
+ */
+void unitMotStandSet(ObjectTask *unit)
+{
+    int motion;
+
+    if (((Actor *)unit->work)->flags & ACTOR_FLAG_STAND_MOTION_1D) {
+        motion = 0x1D;
+    } else if (calcIdol2Chk(unit) != 0
+               && ((((Actor *)unit->work)->flags & ACTOR_FLAG_STAND_MOTION_TEST) == 0
+                   || unitMotGet(unit) == 0x1C || unitMotGet(unit) == 0x23)) {
+        motion = 2;
+    } else {
+        motion = 1;
+    }
+    unitMotSet(unit, motion);
+}
 
 static const char UnitNoGetFailureFormat[32] = "** unitNoGet: err -> %X\n";
 

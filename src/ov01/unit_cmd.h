@@ -12,6 +12,8 @@
 
 extern CalcUnitParam *calcUPGet(ObjectTask *unit);
 extern int calcStatGet(ObjectTask *unit, int category, int flag);
+/* Defined in src/ov01/calc.c (ov01/tu004), not declared in its header. */
+extern int calcIdol2Chk(ObjectTask *unit);
 extern int dataCidGet(int chara_id);
 
 /*
@@ -193,6 +195,11 @@ extern void sefSetupPlayer(short charaId, short, short, short);
 extern void sefSetupEnemy(short charaId);
 extern void dataUnitFileLoad(ObjectTask *unit, int mode);
 extern void dataSndSeRegLoad(ObjectTask *unit);
+
+/* Defined in src/ov01/data_unit_org_get.c, declared there the
+ * same way; unitCmdReadWait waits on the first and then calls the second. */
+extern int dataCdSync(void);
+extern void dataUnitFileLoad2Sub(ObjectTask *unit);
 
 extern void ACT_updateMotion(Actor *actor);
 extern float UnduGet(float x, float z);
