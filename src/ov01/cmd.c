@@ -948,7 +948,42 @@ int cmdUnitpara(ObjectTask *unit, int category, int value, int mode)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdUnitparaSub);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdUnittbl);
+extern int unitTblGet(int side, ObjectTask ***table);
+
+int cmdUnittbl(ThinkProcess *proc)
+{
+    int regNo;
+    int outStart;
+    int adr;
+    int side;
+    ObjectTask **table;
+    int i = 0;
+    int count;
+    short successCount = 0;
+
+    regNo = thinkRegNo(proc->pc);
+    proc->pc += 2;
+    outStart = cmdNum(proc->pc);
+    proc->pc += 2;
+    side = cmdNum(proc->pc);
+    proc->pc += 2;
+
+    count = unitTblGet(side, &table);
+
+    if (count > 0) {
+        adr = outStart;
+        for (; i < count; i++) {
+            if (table[i] != 0 && !(((CmdActorFlags *)table[i]->work)->flags & 0x80)) {
+                *(short *)thinkAdrGet(adr) = unitNoGet(table[i]);
+                adr += 2;
+                successCount++;
+            }
+        }
+    }
+
+    thinkRegSet(regNo & 0xFFFF, successCount & 0xFFFF);
+    return 0;
+}
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdUnitCreate);
 
@@ -1178,7 +1213,47 @@ INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamCopy);
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetPos);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetAct);
+int cmdCamSetAct(ThinkProcess *proc)
+{
+    int unitNo;
+    McamParams *cam = mcamPtrGet();
+    ObjectTask *unit;
+    int actId;
+    float offsX;
+    float offsY;
+    float offsZ;
+
+    unitNo = unitNoChk(cmdNum(proc->pc));
+
+    cam->unitTrackEnabled = 1;
+
+    unit = unitPtrGet(unitNo);
+    cam->targetBlock = ((UnitDeadTimeRecord *)unit)->target;
+    unit = unitPtrGet(unitNo);
+    cam->charaId = calcUPGet(unit)->charaId;
+
+    proc->pc += 2;
+    actId = cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offsEnabled = 1;
+    cam->actId = actId;
+
+    offsX = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offset.x = offsX * 0.01f;
+
+    offsY = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offset.y = offsY * 0.01f;
+
+    offsZ = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offset.w = 1.0f;
+    cam->offset.z = offsZ * 0.01f;
+
+    myMCamSet(camMode, cam);
+    return 0;
+}
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetAct2);
 
@@ -1229,7 +1304,31 @@ int cmdCamOffsAng(ThinkProcess *proc)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamMove);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamShake);
+/* MCamShake (ov01/m_cam, still INCLUDE_ASM there): five script-decoded int args. */
+extern void MCamShake(int, int, int, int, int);
+
+int cmdCamShake(ThinkProcess *proc)
+{
+    int mode;
+    int amplitude;
+    int phaseStep;
+    int holdFrames;
+    int decayFrames;
+
+    mode = cmdNum(proc->pc);
+    proc->pc += 2;
+    amplitude = cmdNum(proc->pc);
+    proc->pc += 2;
+    phaseStep = cmdNum(proc->pc);
+    proc->pc += 2;
+    holdFrames = cmdNum(proc->pc);
+    proc->pc += 2;
+    decayFrames = cmdNum(proc->pc);
+    proc->pc += 2;
+
+    MCamShake(mode, amplitude, phaseStep, holdFrames, decayFrames);
+    return 0;
+}
 
 int cmdCamCenterLength(ThinkProcess *proc)
 {
@@ -1574,28 +1673,6 @@ int cmdStatReset(ThinkProcess *proc)
     calcStatReset(unitPtrGet(unitNo), category, mask, 0);
     return 0;
 }
-
-/*
- * The block cmdDeadTime reaches through the pointer stored just past
- * ObjectTask's modeled task/work prefix; only the field this function
- * writes is modeled.
- */
-typedef struct UnitDeadTimeBlock {
-    unsigned char unmodeled_0[0xD0];
-    float value;    /* +0xD0: reciprocal-scaled duration */
-} UnitDeadTimeBlock;
-
-/*
- * Offset 0x14 of the record unitPtrGet returns lands just past ObjectTask's
- * modeled task/work prefix (shared.h); the real per-unit allocation is
- * longer than that partial view (shared.h's own XglTaskPrefix comment
- * documents the same gap for the task-specific payload). cmdDeadTime is the
- * only function in this allocation that reads the pointer stored there.
- */
-typedef struct UnitDeadTimeRecord {
-    unsigned char unmodeled_0[0x14];
-    UnitDeadTimeBlock *target;   /* +0x14 */
-} UnitDeadTimeRecord;
 
 int cmdDeadTime(ThinkProcess *proc)
 {

@@ -530,14 +530,46 @@ typedef struct McamAngleOffset {
 } McamAngleOffset;
 
 /*
+ * The block cmdDeadTime and cmdCamSetAct reach through the pointer stored
+ * just past ObjectTask's modeled task/work prefix; only the field
+ * cmdDeadTime writes is modeled.
+ */
+typedef struct UnitDeadTimeBlock {
+    unsigned char unmodeled_0[0xD0];
+    float value;    /* +0xD0: cmdDeadTime, reciprocal-scaled duration */
+} UnitDeadTimeBlock;
+
+/*
+ * Offset 0x14 of the record unitPtrGet returns lands just past ObjectTask's
+ * modeled task/work prefix (shared.h); the real per-unit allocation is
+ * longer than that partial view (shared.h's own XglTaskPrefix comment
+ * documents the same gap for the task-specific payload). cmdDeadTime and
+ * cmdCamSetAct are the only functions in this allocation that read the
+ * pointer stored there.
+ */
+typedef struct UnitDeadTimeRecord {
+    unsigned char unmodeled_0[0x14];
+    UnitDeadTimeBlock *target;   /* +0x14 */
+} UnitDeadTimeRecord;
+
+/*
  * mcamPtrGet (this TU, still asm) returns the camera-offset parameter block
  * cmdCamOffsPos (0x00a21458) fills in; only the members that function
  * touches are modeled. cmdCamOffsAng (this TU, still asm) reaches the same
  * +0x70 enable flag for its own angle block, so it stays a separate,
- * unmodeled span here.
+ * unmodeled span here. cmdCamSetAct (0x00a20f28) reaches a disjoint span at
+ * the head of the same block: +0x00 (sw $19,0x0($18), a one/zero flag),
+ * +0x20 (sw $3,0x20($18), the unit's UnitDeadTimeRecord target pointer),
+ * +0x24 (sw $4,0x24($18), the unit's CalcUnitParam charaId widened to a
+ * word) and +0x28 (sw $2,0x28($18), the raw third script operand).
  */
 typedef struct McamParams {
-    unsigned char unmodeled_0[0x70];
+    int unitTrackEnabled;              /* +0x00: cmdCamSetAct */
+    unsigned char unmodeled_4[0x20 - 0x4];
+    UnitDeadTimeBlock *targetBlock;    /* +0x20: cmdCamSetAct */
+    int charaId;                       /* +0x24: cmdCamSetAct */
+    int actId;                         /* +0x28: cmdCamSetAct */
+    unsigned char unmodeled_2c[0x70 - 0x2c];
     int offsEnabled;                  /* +0x70 */
     unsigned char unmodeled_74[0x80 - 0x74];
     Vector4 offset;                   /* +0x80: x/y/z scaled by 0.01, w fixed at 1.0 */
