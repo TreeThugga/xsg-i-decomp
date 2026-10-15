@@ -417,7 +417,25 @@ void unitCmdAtkSub(ObjectTask *unit, UnitActRequest *request)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitJobTypeAtk);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdAtkEnd);
+void unitCmdAtkEnd(ObjectTask *unit)
+{
+    CmdEntry cmd;
+
+    unitCmdClear(unit);
+    if (unitMotGet(unit) == 0x20) {
+        cmd.selector = 0xD;
+        cmd.argument = 0x21;
+        cmd.extra = 0;
+        unitCmdSet(unit, &cmd);
+        unitWpnMotSet(unit, dataDefWpnGet((UnitRecord *) unit), 0, 0x32);
+        if (calcUPGet(unit)->charaId == 7) {
+            unitWpnMotSet(unit, 1, 0, 0x32);
+        }
+    } else {
+        unitMotSet(unit, 1);
+    }
+    unitFaceMotSet(unit, 0x35);
+}
 
 int unitCmdDeadSet(ObjectTask *unit)
 {
@@ -557,7 +575,34 @@ int unitDeadSpecChk(ObjectTask *unit)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdMot);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdTgtSet);
+extern const char D_00A43AB8[];
+
+int unitCmdTgtSet(ObjectTask *unit)
+{
+    Actor *actor;
+    CmdEntry *cmd;
+    TgtCmd tgtCmd;
+    ObjectTask *target;
+
+    actor = unit->work;
+    cmd = unitCmdPtrGet(unit);
+    if (actor->moveState != 0) {
+        return 0;
+    }
+    tgtCmd.tecId = cmd->argument;
+    tgtCmd.target = (ObjectTask *) cmd->extra;
+    tgtCmd.itmId = cmd->itmId;
+    tgtCmd.mode = cmd->mode;
+    target = tgtFindFirst(unit, &tgtCmd);
+    if (target != 0) {
+        ((Actor *) unit->work)->targetUnit = target;
+        return unitCmdNext(unit);
+    }
+    printf(D_00A43AB8);
+    cmdListCansel(unit);
+    unitCmdClear(unit);
+    return unitCmdNext(unit);
+}
 
 INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitCmdTurn);
 
@@ -1112,7 +1157,24 @@ float unitColiGet(ObjectTask *unit, ObjectTask *targetUnit)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitAgwsChk);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/unit_cmd", unitIdChk);
+int unitIdChk(int side, int charaId)
+{
+    UnitRecord **table;
+    int count;
+    int matchCount;
+    int i;
+
+    matchCount = 0;
+    count = unitTblGet(side, &table);
+    for (i = 0; i < count; i++) {
+        if (table[i] != 0) {
+            if (calcUPGet((ObjectTask *)table[i])->charaId == charaId) {
+                matchCount++;
+            }
+        }
+    }
+    return matchCount != 0;
+}
 
 /* Defined later in this TU (a local sibling still in asm). */
 extern void unitDispOnOff(int flag);

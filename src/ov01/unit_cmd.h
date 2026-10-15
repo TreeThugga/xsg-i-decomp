@@ -163,10 +163,30 @@ struct CmdEntry {
     int selector;      /* +0x00 */
     int argument;      /* +0x04 */
     int extra;         /* +0x08 */
-    unsigned char unmodeled_0c[8]; /* +0x0C: unwritten by any claimed call */
+    int itmId;         /* +0x0C: unitCmdTgtSet copies it into the TgtCmd
+                         * (src/ov01/calc.c) itmId it builds for
+                         * tgtFindFirst (lw $3, 0xC($7); sw $3, 0x8($29)). */
+    int mode;          /* +0x10: unitCmdTgtSet's own TgtCmd.mode, the same
+                         * offset tgtFindChk branches on for mode 3
+                         * (lw $2, 0x10($7); sw $2, 0xC($29)). */
 };
 
 extern void unitCmdSet(ObjectTask *unit, CmdEntry *cmd);
+
+/*
+ * tgtFindFirst's search criteria (src/ov01/calc.c, still asm there, its own
+ * TgtCmd restated here): unitCmdTgtSet builds one of these on its own stack
+ * from its queued CmdEntry before calling it.
+ */
+typedef struct TgtCmd {
+    int tecId;          /* +0x00 */
+    ObjectTask *target; /* +0x04 */
+    int itmId;          /* +0x08 */
+    int mode;           /* +0x0C: 3 = item */
+} TgtCmd;
+
+extern ObjectTask *tgtFindFirst(ObjectTask *unit, TgtCmd *cmd);
+extern void cmdListCansel(ObjectTask *unit);
 
 /* The three shorts after charaId are CalcUnitParam.weaponId[0..2]. */
 extern void sefSetupPlayer(short charaId, short, short, short);
