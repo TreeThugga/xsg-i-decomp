@@ -563,13 +563,26 @@ typedef struct UnitDeadTimeRecord {
  * +0x24 (sw $4,0x24($18), the unit's CalcUnitParam charaId widened to a
  * word) and +0x28 (sw $2,0x28($18), the raw third script operand).
  */
+/*
+ * One tracked unit of cmdCamSetAct3's two-unit camera (mode 3 in
+ * unitTrackEnabled): the same three words cmdCamSetAct stores at
+ * +0x20..+0x28 for a single unit.
+ */
+typedef struct McamActorTarget {
+    UnitDeadTimeBlock *targetBlock;    /* +0x0: the unit's UnitDeadTimeRecord target */
+    int charaId;                       /* +0x4: CalcUnitParam charaId */
+    int actId;                         /* +0x8: script operand */
+} McamActorTarget;
+
 typedef struct McamParams {
-    int unitTrackEnabled;              /* +0x00: cmdCamSetAct */
-    unsigned char unmodeled_4[0x20 - 0x4];
+    int unitTrackEnabled;              /* +0x00: cmdCamSetAct; cmdCamCopy clears it (sw $0,0x0($2)) */
+    unsigned char unmodeled_4[0x10 - 0x4];
+    Vector4 lockPosition;              /* +0x10: cmdCamCopy (swc1 0x10/0x14/0x18, w 1.0f at 0x1C) */
     UnitDeadTimeBlock *targetBlock;    /* +0x20: cmdCamSetAct */
     int charaId;                       /* +0x24: cmdCamSetAct */
     int actId;                         /* +0x28: cmdCamSetAct */
-    unsigned char unmodeled_2c[0x70 - 0x2c];
+    McamActorTarget pairTarget[2];     /* +0x2C/+0x38: cmdCamSetAct3 (sw 0x2C..0x40($18)) */
+    unsigned char unmodeled_44[0x70 - 0x44];
     int offsEnabled;                  /* +0x70 */
     unsigned char unmodeled_74[0x80 - 0x74];
     Vector4 offset;                   /* +0x80: x/y/z scaled by 0.01, w fixed at 1.0 */
@@ -577,6 +590,17 @@ typedef struct McamParams {
 } McamParams;
 
 extern McamParams *mcamPtrGet(void);
+
+/*
+ * MCamGetCurrentCoord (src/ov01/m_cam.c) fills a coordinate with the given
+ * camera point (0 or 1); cmdCamCopy (0x00a20d98) passes the point opposite
+ * the current camMode.
+ */
+extern Vector4 *MCamGetCurrentCoord(Vector4 *coord, int point);
+
+/* "** CamCopy err **\n" at 0x00a465a8 (ov01 .rodata): cmdCamCopy's message
+ * when camMode is neither 0 nor 1. */
+extern const char D_00A465A8[];
 
 /*
  * StudioLight's ambient_color (include/main/xgl_studio.h, main/tu101) is the

@@ -1209,7 +1209,32 @@ int cmdCamBankMoveMode(void)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamLock);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamCopy);
+/* The w store last gives the original's order of the four swc1 stores. */
+int cmdCamCopy(void)
+{
+    Vector4 coord;
+    McamParams *cam;
+    int point;
+
+    if (camMode == 1) {
+        point = 0;
+    } else if (camMode == 0) {
+        point = 1;
+    } else {
+        printf(D_00A465A8);
+        return 0;
+    }
+    MCamGetCurrentCoord(&coord, point);
+    cam = mcamPtrGet();
+    cam->unitTrackEnabled = 0;
+    cam->offsEnabled = 0;
+    cam->lockPosition.x = coord.x;
+    cam->lockPosition.y = coord.y;
+    cam->lockPosition.z = coord.z;
+    cam->lockPosition.w = 1.0f;
+    myMCamSet(camMode, cam);
+    return 0;
+}
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetPos);
 
@@ -1257,7 +1282,56 @@ int cmdCamSetAct(ThinkProcess *proc)
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetAct2);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetAct3);
+/*
+ * Two-unit form of cmdCamSetAct. Each unit number has its own variable: one
+ * shared variable outranks proc and cam for $16..$18 and permutes all three.
+ */
+int cmdCamSetAct3(ThinkProcess *proc)
+{
+    McamParams *cam = mcamPtrGet();
+    int firstUnitNo;
+    int secondUnitNo;
+    ObjectTask *unit;
+    float offsX;
+    float offsY;
+    float offsZ;
+
+    firstUnitNo = unitNoChk(cmdNum(proc->pc));
+    cam->unitTrackEnabled = 3;
+    unit = unitPtrGet(firstUnitNo);
+    cam->pairTarget[0].targetBlock = ((UnitDeadTimeRecord *)unit)->target;
+    unit = unitPtrGet(firstUnitNo);
+    cam->pairTarget[0].charaId = calcUPGet(unit)->charaId;
+    proc->pc += 2;
+    cam->pairTarget[0].actId = cmdNum(proc->pc);
+    proc->pc += 2;
+
+    secondUnitNo = unitNoChk(cmdNum(proc->pc));
+    unit = unitPtrGet(secondUnitNo);
+    cam->pairTarget[1].targetBlock = ((UnitDeadTimeRecord *)unit)->target;
+    unit = unitPtrGet(secondUnitNo);
+    cam->pairTarget[1].charaId = calcUPGet(unit)->charaId;
+    proc->pc += 2;
+    cam->pairTarget[1].actId = cmdNum(proc->pc);
+    proc->pc += 2;
+
+    cam->offsEnabled = 1;
+    offsX = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offset.x = offsX * 0.01f;
+
+    offsY = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offset.y = offsY * 0.01f;
+
+    offsZ = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->offset.w = 1.0f;
+    cam->offset.z = offsZ * 0.01f;
+
+    myMCamSet(camMode, cam);
+    return 0;
+}
 
 int cmdCamOffsPos(ThinkProcess *proc)
 {
