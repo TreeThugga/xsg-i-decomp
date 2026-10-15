@@ -1554,7 +1554,35 @@ void calcStatReset(ObjectTask *unit, int category, int mask, int useAltMask)
     }
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/calc", calcStatDefTurnGet);
+/* turn_1 (still asm data, src/ov01/calc.data.s): an 8x16-byte table of
+ * per-category/per-status-index wait-count-end turn bonuses. */
+extern signed char turn_1[8][16];
+
+/*
+ * Base bonus from turn_1[category][statIdx]; category 7 (agility, per
+ * calcWct) adds one more turn for every quarter of max HP the unit is
+ * missing, each quarter re-reading calcUPGet(unit) rather than caching it.
+ */
+int calcStatDefTurnGet(ObjectTask *unit, int category, int statBit)
+{
+    int idx;
+    int bonus;
+    CalcUnitParam *up;
+
+    idx = calcStatBit2Idx(statBit);
+    bonus = turn_1[category][idx];
+    if (category == 7 && (statBit & 3) != 0) {
+        up = calcUPGet(unit);
+        if ((short) up->currentHp < (short) calcUPGet(unit)->maxHp / 2) {
+            bonus++;
+        }
+        up = calcUPGet(unit);
+        if ((short) up->currentHp < (short) calcUPGet(unit)->maxHp / 4) {
+            bonus++;
+        }
+    }
+    return bonus;
+}
 
 /*
  * The inverse of calcStatIdx2Bit below: the index of statBit's lowest set bit
