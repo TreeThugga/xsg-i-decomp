@@ -44,6 +44,9 @@ const char D_00A461E8[16] = "** reg err %d\n";
 extern const char D_00A461F8[];
 extern const char D_00A46210[];
 extern const char D_00A46248[]; /* "** ONGO err\n": cmdOngo (printf arg when the jump-table index is out of range) */
+extern const char D_00A46258[]; /* cmdOngosub printf arg when count < index (same check as cmdOngo) */
+extern const char D_00A46268[]; /* cmdOngosub printf arg when the return-address stack (ctx->returnDepth) is full */
+extern const char D_00A46280[]; /* cmdRmath1 printf arg for an unrecognized opIndex */
 extern const char D_00A462D0[];
 extern const char D_00A462E8[];
 extern const char D_00A46318[];
@@ -575,7 +578,32 @@ int cmdOngo(ThinkProcess *proc)
     return 0;
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdOngosub);
+int cmdOngosub(ThinkProcess *proc)
+{
+    int index = cmdNum(proc->pc);
+    int count;
+    ThinkContext *ctx;
+
+    proc->pc += 2;
+    count = cmdNum(proc->pc);
+    proc->pc += 2;
+
+    if (count < index) {
+        printf(D_00A46258);
+        return 1;
+    }
+
+    ctx = (ThinkContext *)pContext;
+    if (ctx->returnDepth < 16) {
+        ctx->returnStack[ctx->returnDepth++] = proc->pc + count * 2;
+    } else {
+        printf(D_00A46268);
+        return 1;
+    }
+
+    proc->pc = cmdNum(proc->pc + index * 2);
+    return 0;
+}
 
 int cmdRset(ThinkProcess *proc)
 {
@@ -589,7 +617,40 @@ int cmdRset(ThinkProcess *proc)
     return 0;
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdRmath1);
+int cmdRmath1(ThinkProcess *proc)
+{
+    int opIndex = *(short *)thinkAdrGet(proc->pc - 2);
+    int regNo = thinkRegNo(proc->pc) & 0xFFFF;
+    int regValue;
+    unsigned short masked;
+    short result;
+
+    proc->pc += 2;
+    regValue = thinkRegGet(regNo);
+
+    switch (opIndex) {
+    case 8:
+        result = regValue + 1;
+        break;
+    case 9:
+        result = regValue - 1;
+        break;
+    case 18:
+        masked = regValue & 0xFFFF;
+        result = ~masked;
+        break;
+    case 19:
+        masked = regValue & 0xFFFF;
+        result = ~masked + 1;
+        break;
+    default:
+        printf(D_00A46280);
+        return 1;
+    }
+
+    thinkRegSet(regNo, result & 0xFFFF);
+    return 0;
+}
 
 INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdRmath2);
 
@@ -1236,7 +1297,24 @@ int cmdCamCopy(void)
     return 0;
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdCamSetPos);
+int cmdCamSetPos(ThinkProcess *proc)
+{
+    McamParams *cam = mcamPtrGet();
+    float posZ;
+
+    cam->unitTrackEnabled = 0;
+    cam->lockPosition.x = (float)cmdNum(proc->pc) * 0.01f;
+    proc->pc += 2;
+    cam->lockPosition.y = (float)cmdNum(proc->pc) * 0.01f;
+    proc->pc += 2;
+    posZ = (float)cmdNum(proc->pc);
+    proc->pc += 2;
+    cam->lockPosition.w = 1.0f;
+    cam->offsEnabled = 0;
+    cam->lockPosition.z = posZ * 0.01f;
+    myMCamSet(camMode, cam);
+    return 0;
+}
 
 int cmdCamSetAct(ThinkProcess *proc)
 {
@@ -1722,7 +1800,27 @@ int cmdStatGet(ThinkProcess *proc)
     return 0;
 }
 
-INCLUDE_ASM("asm/nonmatchings/ov01/cmd", cmdStatSet);
+int cmdStatSet(ThinkProcess *proc)
+{
+    int regNo = thinkRegNo(proc->pc);
+    int category;
+    int flag;
+    int unitNo;
+    ObjectTask *unit;
+    int value;
+
+    proc->pc += 2;
+    category = cmdNum(proc->pc);
+    proc->pc += 2;
+    flag = cmdNum(proc->pc);
+    proc->pc += 2;
+    unitNo = cmdNum(proc->pc);
+    proc->pc += 2;
+    unit = unitPtrGet(unitNo);
+    value = calcStatSet(unit, category, flag, 0);
+    thinkRegSet(regNo & 0xFFFF, value & 0xFFFF);
+    return 0;
+}
 
 /*
  * calcStatReset (src/ov01/calc.c, still asm there) resets one status

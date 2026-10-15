@@ -225,6 +225,14 @@ extern int calcLineChk(ObjectTask *unit);
  */
 extern int calcStatGet(ObjectTask *unit, int category, int flag);
 
+/*
+ * calcStatSet (src/ov01/calc.c, still asm) applies a status category/flag
+ * to a unit and reports the result, with the same always-zero fourth word
+ * calcStatReset (below) takes; cmdStatSet (0x00a22420) is this TU's only
+ * claimed caller.
+ */
+extern int calcStatSet(ObjectTask *unit, int category, int flag, int unused);
+
 /* calcUPGet's return type comes from its definer, ov01/tu004 calc.c
  * (published include/ov01/calc.h); calcUPGet itself is still asm there, so
  * it is redeclared here the same way src/ov01/snd.c, src/ov01/menu.c and
