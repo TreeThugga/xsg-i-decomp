@@ -244,7 +244,39 @@ INCLUDE_ASM("asm/nonmatchings/ov01/calc", calcSkillInit);
 
 INCLUDE_ASM("asm/nonmatchings/ov01/calc", calcSkillInitSub);
 
-INCLUDE_ASM("asm/nonmatchings/ov01/calc", calcSkill);
+/* calcSkillSub/AccessoryData.skillId (both this TU, defined below): the
+ * per-skill type/level mask test and the accessory's granted skill id. */
+extern int calcSkillSub(ObjectTask *unit, int skillId, int typeMask, int levelMask);
+extern AccessoryData *dataAccGet(int accessoryId);
+
+int calcSkill(ObjectTask *unit, int kind, int mask)
+{
+    CalcUnitParam *up;
+    int result;
+    int i;
+    int accId;
+    int skillId;
+
+    result = 0;
+    for (i = 0; i < 3; i++) {
+        up = calcUPGet(unit);
+        accId = up->accessoryId[i];
+        if (accId != 0) {
+            skillId = dataAccGet(accId)->skillId;
+            if (skillId != 0) {
+                result += calcSkillSub(unit, skillId, kind, mask);
+            }
+        }
+    }
+    for (i = 0; i < 3; i++) {
+        up = calcUPGet(unit);
+        skillId = up->skillId[i];
+        if (skillId != 0) {
+            result += calcSkillSub(unit, skillId, kind, mask);
+        }
+    }
+    return result;
+}
 
 /*
  * dataSklGet's return record (src/ov01/data_unit_org_get.c, still asm), as
@@ -479,9 +511,6 @@ int calcBc(BattleUnit *unit, int delta)
     calcUPGet((ObjectTask *) unit)->bcValue = bc;
     return 1;
 }
-
-/* calcSkill (this TU, still asm): unit's skill bonus for the given kind. */
-extern int calcSkill(ObjectTask *unit, int kind, int mask);
 
 int calcCounter(ObjectTask *unit, int tecId)
 {
